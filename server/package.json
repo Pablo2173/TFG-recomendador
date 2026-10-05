@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "import:tracks": "node src/scripts/importTracks.js"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +14,7 @@
   "type": "module",
   "dependencies": {
     "cors": "^2.8.6",
+    "csv-parser": "^3.2.1",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "mongoose": "^9.10.4"
