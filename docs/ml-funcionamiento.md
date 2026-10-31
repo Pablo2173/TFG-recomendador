@@ -14,21 +14,10 @@ Convención de tono, igual que en el dataset: `key` 0 = Do, 1 = Do♯, 2 = Re, 3
 
 | Archivo | Función | Entrada → salida |
 |---|---|---|
-| [`preview.py`](../ml/preview.py) | Busca la canción en Deezer o iTunes, elige el mejor resultado y descarga la preview como WAV | nombre + artista → archivo WAV |
-
-| [`analizar.py`](../ml/analizar.py) | Método inicial: estima tono y tempo con plantillas | WAV → `key`, `mode`, `tempo`, `confidence` |
-
-| [`validar.py`](../ml/validar.py) | Experimento 1 y 2: aplica `analizar` a 200 canciones del dataset y compara con las etiquetas | dataset → `resultados.csv` |
-
-| [`informe.py`](../ml/informe.py) | Calcula los porcentajes de acierto de `resultados.csv` | `resultados.csv` → tablas |
-
-| [`features.py`](../ml/features.py) | Convierte un audio en 36 números (características) | WAV → vector de 36 valores |
-
-| [`recoger.py`](../ml/recoger.py) | Construye el conjunto de entrenamiento | dataset → `features.csv` |
-| [`metricas.py`](../ml/metricas.py) | Categorías de acierto del tono (exacto, relativo, quinta…) | predicción + real → categoría |
-| [`entrenar.py`](../ml/entrenar.py) | Entrena y evalúa el random forest; guarda el modelo | `features.csv` → `modelo_tono.joblib` |
-| [`prueba.py`](../ml/prueba.py), [`diagnostico.py`](../ml/diagnostico.py) | Utilidades para comprobar el pipeline y las APIs con una canción | — |
-| `predecir.py` (pendiente de crear) | Une todo: de nombre y artista a tono con confianza | nombre + artista → `key`, `mode`, `confidence` |
+| [`recomendador_armonico.py`](../ml/recomendador_armonico.py) | Busca previews, extrae características, entrena el Random Forest, predice y ordena canciones por compatibilidad tonal | canción o audio → recomendaciones |
+| [`fiabilidad.py`](../ml/fiabilidad.py) | Calcula la fiabilidad ponderada y filtra listas por un rango porcentual | coincidencias → `fiabilidad` |
+| [`features.csv`](../ml/features.csv) | Características y etiquetas utilizadas para entrenar el modelo | dataset → entrenamiento |
+| [`modelo_tono.joblib`](../ml/modelo_tono.joblib) | Random Forest entrenado | características → `key`, `mode`, `confidence` |
 
 ## 3. Flujo completo
 
@@ -57,16 +46,16 @@ tono + modo + confianza
 1. `norm()` normaliza el texto (minúsculas, sin tildes, sin paréntesis, sin "feat…" ni sufijos tipo " - Remastered").
 2. `similitud()` compara con `difflib.SequenceMatcher` (entre 0 y 1).
 3. El `score` de un candidato es `similitud(título) × similitud(artista)`. Se elige el mayor.
-4. Se descarta si queda por debajo de **0,6** (`umbral`). `recoger.py` guarda el `score`, y `entrenar.py` descarta las filas con `score < 0.9` para no entrenar con versiones equivocadas (covers, directos).
+4. Se descarta si queda por debajo de **0,6** (`umbral`). El entrenamiento descarta las filas con `score < 0.9` para no entrenar con versiones equivocadas (covers, directos).
 
 **Descarga y conversión.** Las previews de Deezer son MP3 y las de iTunes son M4A (AAC). `descargar()` baja el archivo a una carpeta temporal y lo convierte con ffmpeg (paquete `imageio-ffmpeg`, no hace falta instalar nada aparte) a **WAV mono a 22 050 Hz**, el formato que lee `librosa` sin problemas en Windows. La carpeta temporal se borra al terminar: **no se guarda audio**.
 
 **Detalles importantes.**
 - Las URLs de preview de Deezer llevan una firma con fecha de caducidad, así que **no deben guardarse**; se descarga el audio en el momento.
-- Límites aproximados: Deezer unas 50 peticiones cada 5 s, iTunes unas 20 por minuto. Por eso `recoger.py` espera 0,3 s entre canciones y iTunes solo se usa de respaldo.
+- Límites aproximados: Deezer unas 50 peticiones cada 5 s, iTunes unas 20 por minuto. iTunes solo se usa de respaldo.
 - Con 30 canciones de prueba se recuperaron 27 (90 %), 3 de ellas por iTunes.
 
-## 5. Extracción de características ([`features.py`](../ml/features.py))
+## 5. Extracción de características
 
 `extraer(path)` convierte 30 segundos de audio en **36 números**:
 
@@ -84,7 +73,7 @@ Formato del vector:
 | `f12`–`f23` | Correlación con la plantilla **mayor** en cada tónica posible |
 | `f24`–`f35` | Correlación con la plantilla **menor** en cada tónica posible |
 
-**Método de plantillas (referencia).** Se elige la plantilla con mayor correlación; esa correlación es la `confidence` de `analizar.py`.
+**Método de plantillas (referencia).** Se elige la plantilla con mayor correlación; esa correlación puede servir como referencia de confianza.
 
 ### Ejemplos reales de `features.csv`
 
@@ -97,7 +86,7 @@ Formato del vector:
 
 En la primera, el chroma tiene un máximo claro en Sol (la tónica) seguido de Re y Do (dominante y subdominante), un patrón típico de una tonalidad mayor. En la última, la energía está repartida casi por igual entre las 12 notas (0,06–0,11), así que no hay una tonalidad nítida y las plantillas se equivocan con una correlación alta; por eso la correlación sola no es una confianza perfecta.
 
-## 6. Conjunto de entrenamiento ([`recoger.py`](../ml/recoger.py))
+## 6. Conjunto de entrenamiento
 
 Recorre canciones del dataset, y para cada una: busca la preview, la descarga a una carpeta temporal, extrae los 36 números y guarda una fila en `features.csv` junto al tono y modo reales.
 
@@ -107,7 +96,7 @@ Recorre canciones del dataset, y para cada una: busca la preview, la descarga a 
 - Si no hay preview o algo falla, esa canción se omite (con un mensaje `fallo` si hubo error).
 - Tiempo aproximado: 3–5 s por canción.
 
-## 7. Entrenamiento ([`entrenar.py`](../ml/entrenar.py))
+## 7. Entrenamiento
 
 ### 7.1 Datos
 - `X`: matriz con los 36 números de cada canción.
@@ -129,7 +118,7 @@ Si se sube una canción `t` semitonos, sus energías por nota se desplazan `t` p
 ### 7.5 Comparación y modelo final
 Sobre las mismas canciones se evalúan dos métodos: las **plantillas** (el método inicial, `plantilla()`) y el **random forest**. Después se entrena un último modelo con todos los datos y se guarda en `modelo_tono.joblib`, que es el que usará el sistema.
 
-## 8. Categorías de acierto ([`metricas.py`](../ml/metricas.py))
+## 8. Categorías de acierto
 
 | Categoría | Definición | Ejemplo con real = Fa mayor |
 |---|---|---|
@@ -147,7 +136,7 @@ Referencia: etiquetas de Spotify (también estimaciones automáticas, no verdad 
 
 | Experimento | Canciones | Exacto | Quinta | Relativo | Paralelo | Otro |
 |---|---|---|---|---|---|---|
-| 1. Plantillas básicas (`analizar.py`) | 177 de 200 | 41,8 % | 13,6 % | 5,6 % | (en "otro") | 39,0 % |
+| 1. Plantillas básicas | 177 de 200 | 41,8 % | 13,6 % | 5,6 % | (en "otro") | 39,0 % |
 | 2. Plantillas con separación armónica y afinación | 177 de 200 | 41,8 % | 12,4 % | 6,2 % | 4,5 % | 35,0 % |
 | 3. Random forest sobre 36 características | pendiente | — | — | — | — | — |
 
@@ -157,18 +146,14 @@ Referencia: etiquetas de Spotify (también estimaciones automáticas, no verdad 
 ## 10. Cómo ejecutar (en orden, con el entorno `.venv` activo y desde `ml/`)
 
 ```
-python prueba.py        # comprueba búsqueda, descarga y análisis con una canción
-python recoger.py       # genera features.csv (cambiar N para más o menos canciones)
-python entrenar.py      # evalúa plantillas frente a random forest y guarda el modelo
+python recomendador_armonico.py train
+python recomendador_armonico.py predict "Blinding Lights" "The Weeknd"
 ```
-
-El experimento inicial se ejecuta con `python validar.py` y `python informe.py`.
 
 ## 11. Archivos generados
 
 | Archivo | Contenido | ¿Subir a Git? |
 |---|---|---|
-| `resultados.csv` | Comparación del experimento 1 y 2 | No (se regenera) |
 | `features.csv` | 36 números por canción y etiquetas; sin audio | Sí, sirve para reproducir el entrenamiento |
 | `modelo_tono.joblib` | Modelo entrenado | Sí, si pesa poco |
 | `.venv/`, `__pycache__/` | Entorno y caché de Python | No |
@@ -225,3 +210,27 @@ python recomendador_armonico.py predict "Blinding Lights" "The Weeknd"
 El entrenamiento usa `features.csv`, descarta emparejamientos con `score < 0.9`, aplica el
 aumento por transposición y guarda `modelo_tono.joblib`. La conversión de previews requiere
 `imageio-ffmpeg`; el entrenamiento y el ranking del CSV no necesitan esa dependencia.
+
+## 16. Fiabilidad común
+
+Todos los recomendadores deben devolver cada canción con un campo `fiabilidad` entre 0 y
+100. El valor se calcula con [`fiabilidad.py`](../ml/fiabilidad.py) a partir de criterios
+ponderados, por lo que cada recomendador puede dar más importancia a sus coincidencias
+principales sin duplicar la lógica de filtrado.
+
+El rango del usuario es inclusivo:
+
+```python
+filtrar_por_fiabilidad(canciones, minimo=60, maximo=100)
+```
+
+La recomendación armónica utiliza estos pesos:
+
+| Criterio | Peso |
+|---|---:|
+| Misma tónica | 0,45 |
+| Mismo modo | 0,25 |
+| Relación armónica válida | 0,30 |
+
+El resultado conserva también `harmonic_score` como alias normalizado entre 0 y 1 para
+compatibilidad con el ranking existente.

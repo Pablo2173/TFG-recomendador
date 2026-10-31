@@ -29,6 +29,8 @@ import pandas as pd
 import requests
 from sklearn.ensemble import RandomForestClassifier
 
+from fiabilidad import calcular_fiabilidad, filtrar_por_fiabilidad
+
 
 MAJOR = np.array(
     [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
@@ -195,7 +197,10 @@ class RecomendadorArmonico:
                     f"No existe el modelo {self.model_path}. Ejecuta primero train."
                 )
             self.model = joblib.load(self.model_path)
-        return self.model
+        model = self.model
+        if not isinstance(model, RandomForestClassifier):
+            raise TypeError(f"El archivo {self.model_path} no contiene un Random Forest")
+        return model
 
     def train(self, features_path: str | Path = "features.csv") -> dict[str, int]:
         dataset = pd.read_csv(features_path)
@@ -256,8 +261,10 @@ class RecomendadorArmonico:
         key: int,
         mode: int,
         limit: int = 20,
+        minimum_reliability: float = 0,
+        maximum_reliability: float = 100,
     ) -> list[dict[str, Any]]:
-        """Ordena un CSV de canciones por cercanía tonal."""
+        """Ordena un CSV y asigna fiabilidad según coincidencias armónicas."""
         if not 0 <= key <= 11 or mode not in (0, 1):
             raise ValueError("key debe estar entre 0 y 11 y mode debe ser 0 o 1")
         if limit < 1:
@@ -269,12 +276,23 @@ class RecomendadorArmonico:
                 track_key = int(track["key"])
                 track_mode = int(track["mode"])
                 distance = (track_key - key) % 12
-                if track_mode == mode and distance in (0, 5, 7):
-                    score = 1.0 if distance == 0 else 0.7
-                elif track_mode != mode and track_key == (key + (9 if mode else 3)) % 12:
-                    score = 0.8
-                else:
+                same_key = track_key == key
+                same_mode = track_mode == mode
+                harmonic_relation = (
+                    distance in (0, 5, 7)
+                    if same_mode
+                    else track_key == (key + (9 if mode else 3)) % 12
+                )
+                if not harmonic_relation:
                     continue
+                reliability = calcular_fiabilidad(
+                    {
+                        "same_key": same_key,
+                        "same_mode": same_mode,
+                        "harmonic_relation": harmonic_relation,
+                    },
+                    {"same_key": 0.45, "same_mode": 0.25, "harmonic_relation": 0.30},
+                )
                 track_id = track["track_id"]
                 result = {
                     "track_id": track_id,
@@ -283,17 +301,20 @@ class RecomendadorArmonico:
                     "genre": track["track_genre"],
                     "key": track_key,
                     "mode": track_mode,
-                    "harmonic_score": score,
+                    "harmonic_score": reliability / 100,
+                    "fiabilidad": reliability,
                 }
                 previous = results_by_id.get(track_id)
-                if previous is None or score > previous["harmonic_score"]:
+                if previous is None or reliability > previous["fiabilidad"]:
                     results_by_id[track_id] = result
         results = sorted(
             results_by_id.values(),
-            key=lambda item: item["harmonic_score"],
+            key=lambda item: item["fiabilidad"],
             reverse=True,
         )
-        return results[:limit]
+        return filtrar_por_fiabilidad(
+            results, minimum_reliability, maximum_reliability
+        )[:limit]
 
 
 def main() -> None:
