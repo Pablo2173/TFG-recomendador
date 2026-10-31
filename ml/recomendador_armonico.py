@@ -98,12 +98,13 @@ def buscar_preview(nombre: str, artista: str, umbral: float = 0.6) -> dict[str, 
             continue
         if not candidatos:
             continue
-        score, candidato = max(
-            (
-                _similitud(item["title"], nombre) * _similitud(item["artist"], artista),
-                item,
-            )
-            for item in candidatos
+        candidato = max(
+            candidatos,
+            key=lambda item: _similitud(item["title"], nombre)
+            * _similitud(item["artist"], artista),
+        )
+        score = _similitud(candidato["title"], nombre) * _similitud(
+            candidato["artist"], artista
         )
         if score >= umbral:
             return {**candidato, "match_score": score}

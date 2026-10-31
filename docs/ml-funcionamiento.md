@@ -15,7 +15,7 @@ Convención de tono, igual que en el dataset: `key` 0 = Do, 1 = Do♯, 2 = Re, 3
 | Archivo | Función | Entrada → salida |
 |---|---|---|
 | [`recomendador_armonico.py`](../ml/recomendador_armonico.py) | Busca previews, extrae características, entrena el Random Forest, predice y ordena canciones por compatibilidad tonal | canción o audio → recomendaciones |
-| [`fiabilidad.py`](../ml/fiabilidad.py) | Calcula la fiabilidad ponderada y filtra listas por un rango porcentual | coincidencias → `fiabilidad` |
+| [`fiabilidad.py`](../ml/fiabilidad.py) | Calcula la fiabilidad ponderada y filtra listas por un rango porcentual, ordenándolas de mayor a menor fiabilidad | coincidencias → `fiabilidad` |
 | [`features.csv`](../ml/features.csv) | Características y etiquetas utilizadas para entrenar el modelo | dataset → entrenamiento |
 | [`modelo_tono.joblib`](../ml/modelo_tono.joblib) | Random Forest entrenado | características → `key`, `mode`, `confidence` |
 
@@ -224,6 +224,9 @@ El rango del usuario es inclusivo:
 filtrar_por_fiabilidad(canciones, minimo=60, maximo=100)
 ```
 
+Las canciones devueltas se ordenan de mayor a menor `fiabilidad`; si varias tienen el
+mismo valor, no se aplica ningún criterio adicional de desempate.
+
 La recomendación armónica utiliza estos pesos:
 
 | Criterio | Peso |
@@ -234,3 +237,36 @@ La recomendación armónica utiliza estos pesos:
 
 El resultado conserva también `harmonic_score` como alias normalizado entre 0 y 1 para
 compatibilidad con el ranking existente.
+
+## 17. Entrenamiento, evaluación y backend
+
+Desde la carpeta `ml/`, el modelo se entrena con:
+
+```powershell
+python recomendador_armonico.py train
+```
+
+La evaluación separa las canciones originales antes de aplicar las transposiciones,
+evitando que una versión de la misma canción aparezca en train y test:
+
+```powershell
+python evaluar_modelo.py
+```
+
+Para arrancar la API Python que analiza una canción:
+
+```powershell
+python api.py --model modelo_tono.joblib
+```
+
+La API expone `GET /health` y `POST /predict`. El servidor Node debe arrancarse desde
+`server/` con `MONGO_URI` configurada y `PYTHON_API_URL=http://127.0.0.1:5000`:
+
+```powershell
+npm run dev
+```
+
+El endpoint `POST /api/recommendations` recibe `name`, `artist` y opcionalmente
+`limit` (entre 1 y 100). Primero obtiene el tono y modo mediante la API Python,
+después consulta MongoDB y devuelve las canciones compatibles ordenadas de mayor a
+menor `fiabilidad`.

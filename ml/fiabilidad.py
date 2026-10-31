@@ -42,7 +42,7 @@ def filtrar_por_fiabilidad(
     minimo: float = 0,
     maximo: float = 100,
 ) -> list[dict[str, Any]]:
-    """Devuelve canciones cuya ``fiabilidad`` está dentro del rango inclusivo."""
+    """Devuelve canciones filtradas y ordenadas por fiabilidad descendente."""
     if not 0 <= minimo <= maximo <= 100:
         raise ValueError("El rango debe cumplir 0 <= minimo <= maximo <= 100")
 
@@ -53,4 +53,4 @@ def filtrar_por_fiabilidad(
             raise ValueError("Cada canción debe tener una fiabilidad numérica")
         if minimo <= fiabilidad <= maximo:
             resultado.append(dict(cancion))
-    return resultado
+    return sorted(resultado, key=lambda cancion: cancion["fiabilidad"], reverse=True)
