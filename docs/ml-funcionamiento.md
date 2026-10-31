@@ -15,10 +15,15 @@ Convención de tono, igual que en el dataset: `key` 0 = Do, 1 = Do♯, 2 = Re, 3
 | Archivo | Función | Entrada → salida |
 |---|---|---|
 | [`preview.py`](../ml/preview.py) | Busca la canción en Deezer o iTunes, elige el mejor resultado y descarga la preview como WAV | nombre + artista → archivo WAV |
+
 | [`analizar.py`](../ml/analizar.py) | Método inicial: estima tono y tempo con plantillas | WAV → `key`, `mode`, `tempo`, `confidence` |
+
 | [`validar.py`](../ml/validar.py) | Experimento 1 y 2: aplica `analizar` a 200 canciones del dataset y compara con las etiquetas | dataset → `resultados.csv` |
+
 | [`informe.py`](../ml/informe.py) | Calcula los porcentajes de acierto de `resultados.csv` | `resultados.csv` → tablas |
+
 | [`features.py`](../ml/features.py) | Convierte un audio en 36 números (características) | WAV → vector de 36 valores |
+
 | [`recoger.py`](../ml/recoger.py) | Construye el conjunto de entrenamiento | dataset → `features.csv` |
 | [`metricas.py`](../ml/metricas.py) | Categorías de acierto del tono (exacto, relativo, quinta…) | predicción + real → categoría |
 | [`entrenar.py`](../ml/entrenar.py) | Entrena y evalúa el random forest; guarda el modelo | `features.csv` → `modelo_tono.joblib` |
@@ -202,3 +207,21 @@ El experimento inicial se ejecuta con `python validar.py` y `python informe.py`.
 - **Aumento de datos:** crear ejemplos nuevos a partir de los existentes manteniendo la etiqueta coherente.
 - **Fuga de datos:** que el test contenga información del entrenamiento, lo que infla el resultado.
 - **Validación cruzada:** repetir entrenamiento y test sobre divisiones distintas de los datos.
+
+## 15. Recomendador armónico unificado
+
+El flujo de producción se encuentra en [`recomendador_armonico.py`](../ml/recomendador_armonico.py).
+Este módulo reúne en una sola clase la extracción de características, la búsqueda y descarga
+temporal de previews, el entrenamiento del random forest, la predicción y el ranking por
+compatibilidad tonal.
+
+Desde la carpeta `ml/`:
+
+```text
+python recomendador_armonico.py train
+python recomendador_armonico.py predict "Blinding Lights" "The Weeknd"
+```
+
+El entrenamiento usa `features.csv`, descarta emparejamientos con `score < 0.9`, aplica el
+aumento por transposición y guarda `modelo_tono.joblib`. La conversión de previews requiere
+`imageio-ffmpeg`; el entrenamiento y el ranking del CSV no necesitan esa dependencia.
