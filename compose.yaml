@@ -1,0 +1,56 @@
+services:
+  mongodb:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  harmonic-api:
+    build:
+      context: ./ml
+    restart: unless-stopped
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  seed-tracks:
+    build:
+      context: ./server
+    command: ["npm", "run", "import:tracks"]
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/tfg
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      MONGO_URI: mongodb://mongodb:27017/tfg
+      PYTHON_API_URL: http://harmonic-api:5000
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en el archivo .env}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      harmonic-api:
+        condition: service_healthy
+      seed-tracks:
+        condition: service_completed_successfully
+
+volumes:
+  mongo-data:

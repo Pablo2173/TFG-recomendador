@@ -110,10 +110,15 @@ Un **random forest** es un conjunto de árboles de decisión (300 aquí). Cada �
 ### 7.3 Aumento de datos por transposición
 Si se sube una canción `t` semitonos, sus energías por nota se desplazan `t` posiciones y su tono real también. `transponer()` gira con `np.roll` cada bloque de 12 números (chroma, correlaciones mayores, correlaciones menores) y `aumentar()` ajusta la etiqueta a `(key + t) mod 12`. Cada canción pasa a ser **12 ejemplos**, y el modelo aprende que un mismo patrón vale en cualquier tono sin tener que verlo en los 12.
 
-### 7.4 Validación sin trampas
-- **`GroupKFold` por artista (5 pliegues):** las canciones de un mismo artista se parecen, así que todas van al mismo lado (entrenamiento o test). Si no, el modelo se beneficiaría de reconocer al artista.
-- **El aumento se aplica solo al entrenamiento**, nunca al test. Si una versión transpuesta de una canción de test estuviera en el entrenamiento, habría *fuga de datos* y el resultado sería artificialmente bueno.
-- Cada canción se predice con un modelo que no la ha visto (ni a su artista) y se acumulan las predicciones de todos los pliegues.
+### 7.4 Validación sin fuga
+- `evaluar_modelo.py` separa primero las canciones originales con
+  `train_test_split(..., stratify=y, random_state=42)`.
+- **El aumento se aplica solo al entrenamiento**, nunca al test. Si una versión
+  transpuesta de una canción de test estuviera en el entrenamiento, habría
+  *fuga de datos* y el resultado sería artificialmente bueno.
+- La evaluación actual no separa por artista; por tanto, canciones del mismo
+  artista pueden acabar en ambos grupos y la cifra debe interpretarse con esa
+  limitación.
 
 ### 7.5 Comparación y modelo final
 Sobre las mismas canciones se evalúan dos métodos: las **plantillas** (el método inicial, `plantilla()`) y el **random forest**. Después se entrena un último modelo con todos los datos y se guarda en `modelo_tono.joblib`, que es el que usará el sistema.
@@ -270,3 +275,13 @@ El endpoint `POST /api/recommendations` recibe `name`, `artist` y opcionalmente
 `limit` (entre 1 y 100). Primero obtiene el tono y modo mediante la API Python,
 después consulta MongoDB y devuelve las canciones compatibles ordenadas de mayor a
 menor `fiabilidad`.
+
+## 18. Pruebas metamórficas
+
+La explicación completa, las propiedades, los oráculos y los límites están en
+[`docs/pruebas-metamorficas.md`](pruebas-metamorficas.md). Las pruebas se
+ejecutan sin red con:
+
+```powershell
+python -m unittest discover -s ml -p "test_*.py" -v
+```

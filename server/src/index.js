@@ -3,18 +3,32 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import Track from './models/Track.js';
+import usersRouter from './routes/users.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/api/users', usersRouter);
+
+app.get('/api/tracks/:trackId', async (req, res) => {
+    try {
+        const track = await Track.findOne({ trackId: req.params.trackId }).lean();
+        if (!track) return res.status(404).json({ error: 'Canción no encontrada' });
+        return res.json({ track });
+    } catch (error) {
+        console.error('Error consultando canción:', error);
+        return res.status(500).json({ error: 'No se pudo consultar la canción' });
+    }
+});
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000';
 
 app.post('/api/recommendations', async (req, res) => {
+    let predictionBody;
     try {
-        const { name, artist, limit = 20 } = req.body ?? {};
+        const { name, artist, trackId, limit = 20 } = req.body ?? {};
         if (typeof name !== 'string' || !name.trim()) {
             return res.status(400).json({ error: 'name debe ser un texto no vacío' });
         }
@@ -25,14 +39,28 @@ app.post('/api/recommendations', async (req, res) => {
             return res.status(400).json({ error: 'limit debe ser un entero entre 1 y 100' });
         }
 
-        const predictionResponse = await fetch(`${PYTHON_API_URL}/predict`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name.trim(), artist: artist.trim() }),
-        });
-        const predictionBody = await predictionResponse.json();
-        if (!predictionResponse.ok) {
-            return res.status(predictionResponse.status).json(predictionBody);
+        try {
+            const predictionResponse = await fetch(`${PYTHON_API_URL}/predict`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name.trim(), artist: artist.trim() }),
+            });
+            const predictionText = await predictionResponse.text();
+            let parsedPrediction = {};
+            try {
+                parsedPrediction = predictionText ? JSON.parse(predictionText) : {};
+            } catch {
+                throw new Error('La API tonal devolvió una respuesta no válida');
+            }
+            if (!predictionResponse.ok) {
+                return res.status(predictionResponse.status).json(parsedPrediction);
+            }
+            predictionBody = parsedPrediction;
+        } catch (error) {
+            console.error('Error conectando con la API tonal:', error);
+            return res.status(503).json({
+                error: 'La API Python del recomendador armónico no está disponible. Iníciala antes de solicitar recomendaciones.',
+            });
         }
 
         const key = predictionBody.key;
@@ -44,6 +72,9 @@ app.post('/api/recommendations', async (req, res) => {
             (key + (mode ? 9 : 3)) % 12,
         ];
         const tracks = await Track.find({
+            ...(typeof trackId === 'string' && trackId.trim()
+                ? { trackId: { $ne: trackId.trim() } }
+                : {}),
             $or: [
                 { 'features.mode': mode, 'features.key': { $in: compatibleKeys.slice(0, 3) } },
                 { 'features.mode': mode ? 0 : 1, 'features.key': compatibleKeys[3] },
@@ -77,11 +108,21 @@ app.post('/api/recommendations', async (req, res) => {
             };
         }).sort((a, b) => b.fiabilidad - a.fiabilidad).slice(0, limit);
 
-        return res.json({ input: { name: name.trim(), artist: artist.trim() }, prediction: predictionBody, recommendations });
+        return res.json({
+            input: { name: name.trim(), artist: artist.trim() },
+            prediction: predictionBody,
+            recommendations,
+        });
     } catch (error) {
         console.error('Error en /api/recommendations:', error);
         return res.status(502).json({ error: 'No se pudo completar la recomendación' });
     }
+});
+
+app.use((error, req, res, next) => {
+    console.error('Error no controlado en la API:', error);
+    if (res.headersSent) return next(error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
 });
 
 const PORT = process.env.PORT || 4000;
