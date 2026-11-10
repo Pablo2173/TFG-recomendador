@@ -212,7 +212,7 @@ class RecomendadorArmonico:
         y = (dataset["key"] + 12 * dataset["mode"]).to_numpy()
         X_augmented, y_augmented = _aumentar(X, y)
         self.model = RandomForestClassifier(
-            n_estimators=300, n_jobs=-1, random_state=42
+            n_estimators=50, n_jobs=1, random_state=42
         ).fit(X_augmented, y_augmented)
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.model, self.model_path)
