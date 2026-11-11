@@ -25,6 +25,49 @@ app.get('/api/tracks/:trackId', async (req, res) => {
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000';
 
+const wait = (milliseconds) => new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+});
+
+const warmUpPythonApi = async () => {
+    const response = await fetch(`${PYTHON_API_URL}/health`, {
+        signal: AbortSignal.timeout(45000),
+    });
+    if (!response.ok) {
+        throw new Error(`La API tonal respondió HTTP ${response.status} en /health`);
+    }
+};
+
+const requestPrediction = async (payload) => {
+    let lastError;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await warmUpPythonApi();
+            const response = await fetch(`${PYTHON_API_URL}/predict`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(45000),
+            });
+            const text = await response.text();
+            let parsed = {};
+            try {
+                parsed = text ? JSON.parse(text) : {};
+            } catch {
+                throw new Error('La API tonal devolvió una respuesta no válida');
+            }
+            if (response.ok || ![502, 503, 504].includes(response.status)) {
+                return { response, parsed };
+            }
+            lastError = new Error(`La API tonal respondió HTTP ${response.status}`);
+        } catch (error) {
+            lastError = error;
+        }
+        if (attempt < 3) await wait(attempt * 5000);
+    }
+    throw lastError;
+};
+
 app.post('/api/recommendations', async (req, res) => {
     let predictionBody;
     try {
@@ -40,18 +83,8 @@ app.post('/api/recommendations', async (req, res) => {
         }
 
         try {
-            const predictionResponse = await fetch(`${PYTHON_API_URL}/predict`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), artist: artist.trim() }),
-            });
-            const predictionText = await predictionResponse.text();
-            let parsedPrediction = {};
-            try {
-                parsedPrediction = predictionText ? JSON.parse(predictionText) : {};
-            } catch {
-                throw new Error('La API tonal devolvió una respuesta no válida');
-            }
+            const { response: predictionResponse, parsed: parsedPrediction } =
+                await requestPrediction({ name: name.trim(), artist: artist.trim() });
             if (!predictionResponse.ok) {
                 return res.status(predictionResponse.status).json(parsedPrediction);
             }
