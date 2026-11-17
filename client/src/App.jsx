@@ -36,9 +36,12 @@ function App() {
   const [harmonicLimit, setHarmonicLimit] = useState(5)
   const [selectedRecommender, setSelectedRecommender] = useState('')
   const [recommenderLoading, setRecommenderLoading] = useState(false)
+  const [harmonicProgress, setHarmonicProgress] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const audioRef = useRef(null)
+  const harmonicProgressTimerRef = useRef(null)
+  const harmonicPhaseTimerRef = useRef(null)
   const [playingTrackId, setPlayingTrackId] = useState(null)
   const [previewLoadingId, setPreviewLoadingId] = useState(null)
   const [previewProgress, setPreviewProgress] = useState(0)
@@ -171,6 +174,7 @@ function App() {
     setSelectedRecommender('traditional')
     setHarmonicRecommendations([])
     setHarmonicLimit(5)
+    setHarmonicProgress(null)
     try {
       const data = await request(`/api/tracks/${encodeURIComponent(track.trackId)}`)
       setSelectedTrack(data.track)
@@ -181,9 +185,42 @@ function App() {
 
   const runHarmonicRecommender = async (limit = 5) => {
     if (!selectedTrack) return
+    const startedAt = Date.now()
+    const updateElapsed = () => {
+      setHarmonicProgress((current) => current
+        ? { ...current, elapsedSeconds: (Date.now() - startedAt) / 1000 }
+        : current)
+    }
+    if (harmonicProgressTimerRef.current) clearInterval(harmonicProgressTimerRef.current)
+    harmonicProgressTimerRef.current = setInterval(updateElapsed, 250)
     setRecommenderLoading(true)
+    setHarmonicProgress({ phase: 'Comprobando el recomendador...', elapsedSeconds: 0 })
     setError('')
     try {
+      let wakeTimer
+      let healthResolved = false
+      const healthRequest = request('/api/harmonic/health')
+      wakeTimer = setTimeout(() => {
+        if (!healthResolved) {
+          setHarmonicProgress((current) => current
+            ? { ...current, phase: 'Despertando el recomendador...' }
+            : current)
+        }
+      }, 1500)
+      try {
+        await healthRequest
+      } finally {
+        healthResolved = true
+        clearTimeout(wakeTimer)
+      }
+      setHarmonicProgress((current) => current
+        ? { ...current, phase: 'Analizando la canción...' }
+        : current)
+      harmonicPhaseTimerRef.current = setTimeout(() => {
+        setHarmonicProgress((current) => current
+          ? { ...current, phase: 'Buscando compatibilidades armónicas...' }
+          : current)
+      }, 800)
       const data = await request('/api/recommendations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -196,12 +233,32 @@ function App() {
       })
       setHarmonicRecommendations(data.recommendations)
       setHarmonicLimit(limit)
+      setHarmonicProgress({
+        phase: 'Terminado',
+        elapsedSeconds: (Date.now() - startedAt) / 1000,
+      })
     } catch (requestError) {
       setError(requestError.message)
+      setHarmonicProgress((current) => current
+        ? { ...current, phase: 'No se pudo completar', elapsedSeconds: (Date.now() - startedAt) / 1000 }
+        : current)
     } finally {
+      if (harmonicProgressTimerRef.current) {
+        clearInterval(harmonicProgressTimerRef.current)
+        harmonicProgressTimerRef.current = null
+      }
+      if (harmonicPhaseTimerRef.current) {
+        clearTimeout(harmonicPhaseTimerRef.current)
+        harmonicPhaseTimerRef.current = null
+      }
       setRecommenderLoading(false)
     }
   }
+
+  useEffect(() => () => {
+    if (harmonicProgressTimerRef.current) clearInterval(harmonicProgressTimerRef.current)
+    if (harmonicPhaseTimerRef.current) clearTimeout(harmonicPhaseTimerRef.current)
+  }, [])
 
   const isFavorite = (trackId) => favorites.some((favorite) => favorite.trackId === trackId)
 
@@ -275,10 +332,12 @@ function App() {
             if (value !== 'harmonic') {
               setHarmonicRecommendations([])
               setHarmonicLimit(5)
+              setHarmonicProgress(null)
             }
             if (value === 'harmonic') runHarmonicRecommender()
           }}
           recommenderLoading={recommenderLoading}
+          harmonicProgress={harmonicProgress}
           recommendations={harmonicRecommendations}
           onShowMore={() => runHarmonicRecommender(harmonicLimit + 5)}
           isFavorite={isFavorite}
@@ -383,6 +442,7 @@ function TrackDetails({
   recommender,
   onRecommenderChange,
   recommenderLoading,
+  harmonicProgress,
   recommendations,
   onShowMore,
   isFavorite,
@@ -443,7 +503,9 @@ function TrackDetails({
           {recommender === 'harmonic' && (
             <div className="detail-results">
               <h3>Recomendaciones armónicas</h3>
-              {recommenderLoading && <p className="empty-message">Calculando recomendaciones...</p>}
+              {harmonicProgress && (
+                <HarmonicProgress loading={recommenderLoading} {...harmonicProgress} />
+              )}
               {!recommenderLoading && recommendations.length === 0 && (
                 <p className="empty-message">No se han encontrado recomendaciones.</p>
               )}
@@ -477,6 +539,19 @@ function TrackDetails({
           )}
         </section>
       </section>
+    </div>
+  )
+}
+
+function HarmonicProgress({ loading, phase, elapsedSeconds }) {
+  const elapsed = `${loading ? Math.floor(elapsedSeconds) : Math.round(elapsedSeconds)} segundos`
+  return (
+    <div className={`harmonic-progress ${loading ? 'is-loading' : ''}`} role="status" aria-live="polite">
+      <div className="harmonic-progress-line">
+        <span>{phase}{loading ? '...' : ` en ${elapsed}`}</span>
+        {loading && <span>{elapsed}</span>}
+      </div>
+      {loading && <div className="harmonic-progress-track"><span /></div>}
     </div>
   )
 }

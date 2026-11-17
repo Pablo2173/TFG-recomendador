@@ -218,6 +218,35 @@ main {
 }
 .detail-results { margin-top: 28px; }
 .detail-results h3 { margin: 0 0 14px; color: #18131f; }
+.harmonic-progress {
+  margin: 12px 0 18px;
+  color: #70677b;
+  font-size: .92rem;
+}
+.harmonic-progress-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.harmonic-progress-track {
+  height: 5px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ede9fe;
+}
+.harmonic-progress-track span {
+  display: block;
+  width: 35%;
+  height: 100%;
+  border-radius: inherit;
+  background: #7c3aed;
+  animation: harmonic-progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes harmonic-progress-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
 .detail-result-card {
   display: flex;
   align-items: center;
