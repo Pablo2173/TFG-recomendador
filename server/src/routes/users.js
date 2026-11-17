@@ -3,9 +3,9 @@ import express from 'express';
 import Track from '../models/Track.js';
 import User from '../models/User.js';
 import { publicUser, requireAuth, signUserToken } from '../middleware/auth.js';
+import { predictHarmonic } from '../services/harmonicApi.js';
 
 const router = express.Router();
-const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const parseOptionalProfile = (body) => {
@@ -218,12 +218,7 @@ router.post('/me/favorites', async (req, res) => {
         if (!name || !artist) {
             return res.status(400).json({ error: 'name y artist son obligatorios' });
         }
-        const response = await fetch(`${PYTHON_API_URL}/predict`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, artist }),
-        });
-        const prediction = await response.json();
+        const { response, data: prediction } = await predictHarmonic({ name, artist });
         if (!response.ok) return res.status(response.status).json(prediction);
 
         const trackId = `${name} - ${artist}`.toLowerCase().normalize('NFKD')

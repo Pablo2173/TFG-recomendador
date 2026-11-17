@@ -5,6 +5,11 @@ import mongoose from 'mongoose';
 import Track from './models/Track.js';
 import usersRouter from './routes/users.js';
 import { findPreview } from './services/previewService.js';
+import {
+    predictHarmonic,
+    startHarmonicKeepAlive,
+    wakeHarmonicApi,
+} from './services/harmonicApi.js';
 
 const app = express();
 app.use(cors());
@@ -42,51 +47,18 @@ app.get('/api/tracks/:trackId/preview', async (req, res) => {
     }
 });
 
-const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000';
-const PYTHON_REQUEST_TIMEOUT_MS = 120000;
-
-const wait = (milliseconds) => new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
+app.get('/api/harmonic/health', async (req, res) => {
+    try {
+        await wakeHarmonicApi();
+        return res.json({ status: 'ok' });
+    } catch (error) {
+        console.error('Error despertando la API tonal:', error);
+        return res.status(503).json({
+            status: 'unavailable',
+            error: 'La API Python del recomendador armónico no está disponible',
+        });
+    }
 });
-
-const warmUpPythonApi = async () => {
-    const response = await fetch(`${PYTHON_API_URL}/health`, {
-        signal: AbortSignal.timeout(PYTHON_REQUEST_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-        throw new Error(`La API tonal respondió HTTP ${response.status} en /health`);
-    }
-};
-
-const requestPrediction = async (payload) => {
-    let lastError;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-        try {
-            await warmUpPythonApi();
-            const response = await fetch(`${PYTHON_API_URL}/predict`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(PYTHON_REQUEST_TIMEOUT_MS),
-            });
-            const text = await response.text();
-            let parsed = {};
-            try {
-                parsed = text ? JSON.parse(text) : {};
-            } catch {
-                throw new Error('La API tonal devolvió una respuesta no válida');
-            }
-            if (response.ok || ![502, 503, 504].includes(response.status)) {
-                return { response, parsed };
-            }
-            lastError = new Error(`La API tonal respondió HTTP ${response.status}`);
-        } catch (error) {
-            lastError = error;
-        }
-        if (attempt < 3) await wait(attempt * 5000);
-    }
-    throw lastError;
-};
 
 app.post('/api/recommendations', async (req, res) => {
     let predictionBody;
@@ -103,8 +75,8 @@ app.post('/api/recommendations', async (req, res) => {
         }
 
         try {
-            const { response: predictionResponse, parsed: parsedPrediction } =
-                await requestPrediction({ name: name.trim(), artist: artist.trim() });
+            const { response: predictionResponse, data: parsedPrediction } =
+                await predictHarmonic({ name: name.trim(), artist: artist.trim() });
             if (!predictionResponse.ok) {
                 return res.status(predictionResponse.status).json(parsedPrediction);
             }
@@ -183,4 +155,7 @@ if (!process.env.MONGO_URI) {
     throw new Error('Falta MONGO_URI en la configuración del servidor');
 }
 await mongoose.connect(process.env.MONGO_URI);
-app.listen(PORT, () => console.log(`API en http://localhost:${PORT}`));
+app.listen(PORT, () => {
+    startHarmonicKeepAlive();
+    console.log(`API en http://localhost:${PORT}`);
+});
