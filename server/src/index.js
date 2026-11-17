@@ -4,6 +4,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import Track from './models/Track.js';
 import usersRouter from './routes/users.js';
+import { findPreview } from './services/previewService.js';
 
 const app = express();
 app.use(cors());
@@ -20,6 +21,24 @@ app.get('/api/tracks/:trackId', async (req, res) => {
     } catch (error) {
         console.error('Error consultando canción:', error);
         return res.status(500).json({ error: 'No se pudo consultar la canción' });
+    }
+});
+
+app.get('/api/tracks/:trackId/preview', async (req, res) => {
+    try {
+        const track = await Track.findOne({ trackId: req.params.trackId })
+            .select('name artists')
+            .lean();
+        if (!track) return res.status(404).json({ error: 'Canción no encontrada' });
+
+        const preview = await findPreview(track.name, track.artists);
+        if (!preview) {
+            return res.status(404).json({ error: 'No hay una preview disponible para esta canción' });
+        }
+        return res.json(preview);
+    } catch (error) {
+        console.error('Error buscando preview:', error);
+        return res.status(502).json({ error: 'No se pudo obtener la preview' });
     }
 });
 

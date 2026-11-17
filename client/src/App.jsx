@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const TOKEN_KEY = 'tfg_token'
@@ -38,6 +38,9 @@ function App() {
   const [recommenderLoading, setRecommenderLoading] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const audioRef = useRef(null)
+  const [playingTrackId, setPlayingTrackId] = useState(null)
+  const [previewLoadingId, setPreviewLoadingId] = useState(null)
 
   const authHeaders = (accessToken = token) => ({ Authorization: `Bearer ${accessToken}` })
 
@@ -90,6 +93,44 @@ function App() {
     setFavorites([])
     setView('home')
   }
+
+  const stopPreview = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+    }
+    setPlayingTrackId(null)
+  }
+
+  const togglePreview = async (track) => {
+    if (playingTrackId === track.trackId) {
+      stopPreview()
+      return
+    }
+
+    stopPreview()
+    setPreviewLoadingId(track.trackId)
+    setError('')
+    try {
+      const { previewUrl } = await request(`/api/tracks/${encodeURIComponent(track.trackId)}/preview`)
+      const audio = new Audio(previewUrl)
+      audio.preload = 'none'
+      audio.addEventListener('ended', () => setPlayingTrackId(null))
+      audio.addEventListener('error', () => {
+        setPlayingTrackId(null)
+        setError('No se pudo reproducir la preview')
+      })
+      audioRef.current = audio
+      await audio.play()
+      setPlayingTrackId(track.trackId)
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setPreviewLoadingId(null)
+    }
+  }
+
+  useEffect(() => () => stopPreview(), [])
 
   const toggleFavorite = async (track) => {
     setError('')
@@ -191,6 +232,9 @@ function App() {
             isFavorite={isFavorite}
             onOpen={openTrack}
             onToggleFavorite={toggleFavorite}
+            onTogglePreview={togglePreview}
+            playingTrackId={playingTrackId}
+            previewLoadingId={previewLoadingId}
             emptyText="Todavía no hay canciones para recomendarte."
           />
         )}
@@ -201,6 +245,9 @@ function App() {
             isFavorite={isFavorite}
             onOpen={openTrack}
             onToggleFavorite={toggleFavorite}
+            onTogglePreview={togglePreview}
+            playingTrackId={playingTrackId}
+            previewLoadingId={previewLoadingId}
             emptyText="no existen canciones favoritas"
           />
         )}
@@ -227,6 +274,9 @@ function App() {
           isFavorite={isFavorite}
           onOpenTrack={openTrack}
           onToggleTrackFavorite={toggleFavorite}
+          onTogglePreview={togglePreview}
+          playingTrackId={playingTrackId}
+          previewLoadingId={previewLoadingId}
           onClose={() => setSelectedTrack(null)}
         />
       )}
@@ -234,7 +284,17 @@ function App() {
   )
 }
 
-function TrackList({ title, tracks, isFavorite, onOpen, onToggleFavorite, emptyText }) {
+function TrackList({
+  title,
+  tracks,
+  isFavorite,
+  onOpen,
+  onToggleFavorite,
+  onTogglePreview,
+  playingTrackId,
+  previewLoadingId,
+  emptyText,
+}) {
   return (
     <section className="recommendation-section">
       <h1>{title}</h1>
@@ -244,6 +304,12 @@ function TrackList({ title, tracks, isFavorite, onOpen, onToggleFavorite, emptyT
         <div className="track-list">
           {tracks.map((track) => (
             <article className="track-card" key={track.trackId} onClick={() => onOpen(track)}>
+              <PreviewButton
+                track={track}
+                onToggle={onTogglePreview}
+                playing={playingTrackId === track.trackId}
+                loading={previewLoadingId === track.trackId}
+              />
               <div className="track-info">
                 <strong>{track.name}</strong>
                 <span>{track.artists}</span>
@@ -309,6 +375,9 @@ function TrackDetails({
   isFavorite,
   onOpenTrack,
   onToggleTrackFavorite,
+  onTogglePreview,
+  playingTrackId,
+  previewLoadingId,
   onClose,
 }) {
   return (
@@ -366,6 +435,12 @@ function TrackDetails({
               )}
               {recommendations.map((recommendation) => (
                 <article className="detail-result-card" key={recommendation.trackId}>
+                  <PreviewButton
+                    track={recommendation}
+                    onToggle={onTogglePreview}
+                    playing={playingTrackId === recommendation.trackId}
+                    loading={previewLoadingId === recommendation.trackId}
+                  />
                   <button className="detail-result-info" onClick={() => onOpenTrack(recommendation)}>
                     <strong>{recommendation.name}</strong>
                     <span>{recommendation.artists}</span>
@@ -388,6 +463,22 @@ function TrackDetails({
         </section>
       </section>
     </div>
+  )
+}
+
+function PreviewButton({ track, onToggle, playing, loading }) {
+  return (
+    <button
+      className="preview-button"
+      aria-label={loading ? 'Cargando preview' : playing ? 'Pausar preview' : 'Reproducir preview'}
+      disabled={loading}
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle(track)
+      }}
+    >
+      {loading ? '…' : playing ? '❚❚' : '▶'}
+    </button>
   )
 }
 
