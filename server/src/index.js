@@ -43,6 +43,7 @@ app.get('/api/tracks/:trackId/preview', async (req, res) => {
 });
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000';
+const PYTHON_REQUEST_TIMEOUT_MS = 120000;
 
 const wait = (milliseconds) => new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
@@ -50,7 +51,7 @@ const wait = (milliseconds) => new Promise((resolve) => {
 
 const warmUpPythonApi = async () => {
     const response = await fetch(`${PYTHON_API_URL}/health`, {
-        signal: AbortSignal.timeout(45000),
+        signal: AbortSignal.timeout(PYTHON_REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) {
         throw new Error(`La API tonal respondió HTTP ${response.status} en /health`);
@@ -66,7 +67,7 @@ const requestPrediction = async (payload) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(45000),
+                signal: AbortSignal.timeout(PYTHON_REQUEST_TIMEOUT_MS),
             });
             const text = await response.text();
             let parsed = {};
