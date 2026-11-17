@@ -35,41 +35,49 @@ const artistSimilarity = (candidate, requested) => Math.max(
 );
 
 const searchDeezer = async (name, artist) => {
-    const query = new URLSearchParams({ q: `${artist} ${name}`, limit: '5' });
-    const response = await fetch(`https://api.deezer.com/search?${query}`, {
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-    });
-    if (!response.ok) throw new Error(`Deezer respondió HTTP ${response.status}`);
-    const body = await response.json();
-    return (body.data ?? [])
-        .filter((item) => typeof item.preview === 'string' && item.preview)
-        .map((item) => ({
-            title: item.title,
-            artist: item.artist?.name ?? '',
-            previewUrl: item.preview,
-            provider: 'deezer',
-        }));
+    const candidates = [];
+    for (const artistVariant of artistVariants(artist)) {
+        const query = new URLSearchParams({ q: `${artistVariant} ${name}`, limit: '5' });
+        const response = await fetch(`https://api.deezer.com/search?${query}`, {
+            signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        });
+        if (!response.ok) throw new Error(`Deezer respondió HTTP ${response.status}`);
+        const body = await response.json();
+        candidates.push(...(body.data ?? [])
+            .filter((item) => typeof item.preview === 'string' && item.preview)
+            .map((item) => ({
+                title: item.title,
+                artist: item.artist?.name ?? '',
+                previewUrl: item.preview,
+                provider: 'deezer',
+            })));
+    }
+    return candidates;
 };
 
 const searchItunes = async (name, artist) => {
-    const query = new URLSearchParams({
-        term: `${artist} ${name}`,
-        entity: 'song',
-        limit: '5',
-    });
-    const response = await fetch(`https://itunes.apple.com/search?${query}`, {
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-    });
-    if (!response.ok) throw new Error(`iTunes respondió HTTP ${response.status}`);
-    const body = await response.json();
-    return (body.results ?? [])
-        .filter((item) => typeof item.previewUrl === 'string' && item.previewUrl)
-        .map((item) => ({
-            title: item.trackName ?? '',
-            artist: item.artistName ?? '',
-            previewUrl: item.previewUrl,
-            provider: 'itunes',
-        }));
+    const candidates = [];
+    for (const artistVariant of artistVariants(artist)) {
+        const query = new URLSearchParams({
+            term: `${artistVariant} ${name}`,
+            entity: 'song',
+            limit: '5',
+        });
+        const response = await fetch(`https://itunes.apple.com/search?${query}`, {
+            signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        });
+        if (!response.ok) throw new Error(`iTunes respondió HTTP ${response.status}`);
+        const body = await response.json();
+        candidates.push(...(body.results ?? [])
+            .filter((item) => typeof item.previewUrl === 'string' && item.previewUrl)
+            .map((item) => ({
+                title: item.trackName ?? '',
+                artist: item.artistName ?? '',
+                previewUrl: item.previewUrl,
+                provider: 'itunes',
+            })));
+    }
+    return candidates;
 };
 
 const bestCandidate = (candidates, name, artist) => candidates

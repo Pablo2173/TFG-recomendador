@@ -40,10 +40,16 @@ def create_handler(recommender: RecomendadorArmonico):
                     raise ValueError("name debe ser un texto no vacío")
                 if not isinstance(artist, str) or not artist.strip():
                     raise ValueError("artist debe ser un texto no vacío")
+                print(
+                    f"Petición de predicción: {name.strip()} - {artist.strip()}",
+                    flush=True,
+                )
                 prediction = recommender.predict_song(name.strip(), artist.strip())
                 if prediction is None:
+                    print("Predicción rechazada: no hay preview fiable", flush=True)
                     self._json(404, {"error": "No se encontró una preview fiable"})
                     return
+                print("Predicción completada correctamente", flush=True)
                 self._json(200, prediction)
             except (ValueError, json.JSONDecodeError) as error:
                 self._json(400, {"error": str(error)})
@@ -54,6 +60,7 @@ def create_handler(recommender: RecomendadorArmonico):
                 TypeError,
                 requests.RequestException,
             ) as error:
+                print(f"Error en predicción: {error}", flush=True)
                 self._json(500, {"error": f"Error prediciendo la canción: {error}"})
 
         def log_message(self, format: str, *args: object) -> None:

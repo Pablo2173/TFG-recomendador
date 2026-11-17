@@ -68,6 +68,21 @@ def _similitud_artista(candidato: str, solicitado: str) -> float:
     return max(_similitud(candidato, variante) for variante in _variantes_artista(solicitado))
 
 
+def _buscar_en_proveedores(
+    buscar: Any, nombre: str, artista: str
+) -> list[dict[str, Any]]:
+    candidatos: list[dict[str, Any]] = []
+    errores: list[requests.RequestException] = []
+    for variante in _variantes_artista(artista):
+        try:
+            candidatos.extend(buscar(nombre, variante))
+        except requests.RequestException as error:
+            errores.append(error)
+    if not candidatos and errores:
+        raise errores[-1]
+    return candidatos
+
+
 def _buscar_deezer(nombre: str, artista: str) -> list[dict[str, Any]]:
     response = requests.get(
         "https://api.deezer.com/search",
@@ -109,10 +124,16 @@ def buscar_preview(nombre: str, artista: str, umbral: float = 0.6) -> dict[str, 
     """Devuelve la mejor preview encontrada o ``None`` si no hay coincidencia fiable."""
     for buscar in (_buscar_deezer, _buscar_itunes):
         try:
-            candidatos = [item for item in buscar(nombre, artista) if item["preview"]]
-        except requests.RequestException:
+            candidatos = [
+                item
+                for item in _buscar_en_proveedores(buscar, nombre, artista)
+                if item["preview"]
+            ]
+        except requests.RequestException as error:
+            print(f"Error consultando proveedor de previews: {error}", flush=True)
             continue
         if not candidatos:
+            print("Proveedor de previews sin resultados con audio", flush=True)
             continue
         candidato = max(
             candidatos,
@@ -122,8 +143,14 @@ def buscar_preview(nombre: str, artista: str, umbral: float = 0.6) -> dict[str, 
         score = _similitud(candidato["title"], nombre) * _similitud_artista(
             candidato["artist"], artista
         )
+        print(
+            f"Preview candidata: {candidato['source']} "
+            f"{candidato['title']} - {candidato['artist']} (score={score:.3f})",
+            flush=True,
+        )
         if score >= umbral:
             return {**candidato, "match_score": score}
+        print(f"Preview descartada por umbral {umbral:.2f}", flush=True)
     return None
 
 
