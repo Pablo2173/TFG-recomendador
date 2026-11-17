@@ -1,8 +1,8 @@
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000';
-const REQUEST_TIMEOUT_MS = Number(process.env.HARMONIC_REQUEST_TIMEOUT_MS || 120000);
-const RETRY_DELAY_MS = Number(process.env.HARMONIC_RETRY_DELAY_MS || 5000);
-const MAX_ATTEMPTS = Number(process.env.HARMONIC_MAX_ATTEMPTS || 3);
-const KEEPALIVE_INTERVAL_MS = Number(process.env.HARMONIC_KEEPALIVE_MS || 300000);
+const REQUEST_TIMEOUT_MS = Number(process.env.HARMONIC_REQUEST_TIMEOUT_MS ?? 120000);
+const RETRY_DELAY_MS = Number(process.env.HARMONIC_RETRY_DELAY_MS ?? 5000);
+const MAX_ATTEMPTS = Number(process.env.HARMONIC_MAX_ATTEMPTS ?? 3);
+const KEEPALIVE_INTERVAL_MS = Number(process.env.HARMONIC_KEEPALIVE_MS ?? 300000);
 
 const wait = (milliseconds) => new Promise((resolve) => {
     setTimeout(resolve, milliseconds);

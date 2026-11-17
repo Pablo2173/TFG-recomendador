@@ -154,8 +154,16 @@ const PORT = process.env.PORT || 4000;
 if (!process.env.MONGO_URI) {
     throw new Error('Falta MONGO_URI en la configuración del servidor');
 }
-await mongoose.connect(process.env.MONGO_URI);
-app.listen(PORT, () => {
+
+const server = app.listen(PORT, () => {
     startHarmonicKeepAlive();
     console.log(`API en http://localhost:${PORT}`);
 });
+
+try {
+    await mongoose.connect(process.env.MONGO_URI);
+} catch (error) {
+    console.error('Error conectando con MongoDB durante el arranque:', error);
+    server.close();
+    throw error;
+}
