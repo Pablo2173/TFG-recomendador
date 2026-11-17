@@ -243,6 +243,7 @@ function App() {
             onTogglePreview={togglePreview}
             playingTrackId={playingTrackId}
             previewLoadingId={previewLoadingId}
+            previewProgress={previewProgress}
             emptyText="Todavía no hay canciones para recomendarte."
           />
         )}
@@ -256,6 +257,7 @@ function App() {
             onTogglePreview={togglePreview}
             playingTrackId={playingTrackId}
             previewLoadingId={previewLoadingId}
+            previewProgress={previewProgress}
             emptyText="no existen canciones favoritas"
           />
         )}
@@ -285,6 +287,7 @@ function App() {
           onTogglePreview={togglePreview}
           playingTrackId={playingTrackId}
           previewLoadingId={previewLoadingId}
+          previewProgress={previewProgress}
           onClose={() => setSelectedTrack(null)}
         />
       )}
@@ -301,6 +304,7 @@ function TrackList({
   onTogglePreview,
   playingTrackId,
   previewLoadingId,
+  previewProgress,
   emptyText,
 }) {
   return (
@@ -387,6 +391,7 @@ function TrackDetails({
   onTogglePreview,
   playingTrackId,
   previewLoadingId,
+  previewProgress,
   onClose,
 }) {
   return (
