@@ -41,6 +41,7 @@ function App() {
   const audioRef = useRef(null)
   const [playingTrackId, setPlayingTrackId] = useState(null)
   const [previewLoadingId, setPreviewLoadingId] = useState(null)
+  const [previewProgress, setPreviewProgress] = useState(0)
 
   const authHeaders = (accessToken = token) => ({ Authorization: `Bearer ${accessToken}` })
 
@@ -100,6 +101,7 @@ function App() {
       audioRef.current.src = ''
     }
     setPlayingTrackId(null)
+    setPreviewProgress(0)
   }
 
   const togglePreview = async (track) => {
@@ -114,10 +116,16 @@ function App() {
     try {
       const { previewUrl } = await request(`/api/tracks/${encodeURIComponent(track.trackId)}/preview`)
       const audio = new Audio(previewUrl)
-      audio.preload = 'none'
-      audio.addEventListener('ended', () => setPlayingTrackId(null))
+      audio.preload = 'auto'
+      audio.addEventListener('timeupdate', () => {
+        if (audio.duration > 0) {
+          setPreviewProgress((audio.currentTime / audio.duration) * 100)
+        }
+      })
+      audio.addEventListener('ended', stopPreview)
       audio.addEventListener('error', () => {
         setPlayingTrackId(null)
+        setPreviewProgress(0)
         setError('No se pudo reproducir la preview')
       })
       audioRef.current = audio
@@ -309,6 +317,7 @@ function TrackList({
                 onToggle={onTogglePreview}
                 playing={playingTrackId === track.trackId}
                 loading={previewLoadingId === track.trackId}
+                progress={playingTrackId === track.trackId ? previewProgress : 0}
               />
               <div className="track-info">
                 <strong>{track.name}</strong>
@@ -440,6 +449,7 @@ function TrackDetails({
                     onToggle={onTogglePreview}
                     playing={playingTrackId === recommendation.trackId}
                     loading={previewLoadingId === recommendation.trackId}
+                    progress={playingTrackId === recommendation.trackId ? previewProgress : 0}
                   />
                   <button className="detail-result-info" onClick={() => onOpenTrack(recommendation)}>
                     <strong>{recommendation.name}</strong>
@@ -466,10 +476,11 @@ function TrackDetails({
   )
 }
 
-function PreviewButton({ track, onToggle, playing, loading }) {
+function PreviewButton({ track, onToggle, playing, loading, progress }) {
   return (
     <button
-      className="preview-button"
+      className={`preview-button ${playing ? 'is-playing' : ''}`}
+      style={{ '--preview-progress': `${progress}%` }}
       aria-label={loading ? 'Cargando preview' : playing ? 'Pausar preview' : 'Reproducir preview'}
       disabled={loading}
       onClick={(event) => {
