@@ -9,6 +9,7 @@ import {
     predictHarmonic,
     startHarmonicKeepAlive,
     wakeHarmonicApi,
+    wakeHarmonicApiWithRetry,
 } from './services/harmonicApi.js';
 
 const app = express();
@@ -49,7 +50,7 @@ app.get('/api/tracks/:trackId/preview', async (req, res) => {
 
 app.get('/api/harmonic/health', async (req, res) => {
     try {
-        await wakeHarmonicApi();
+        await wakeHarmonicApiWithRetry();
         return res.json({ status: 'ok' });
     } catch (error) {
         console.error('Error despertando la API tonal:', error);

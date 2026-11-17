@@ -30,6 +30,20 @@ export const wakeHarmonicApi = async () => {
     }
 };
 
+export const wakeHarmonicApiWithRetry = async () => {
+    let lastError;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        try {
+            await wakeHarmonicApi();
+            return;
+        } catch (error) {
+            lastError = error;
+        }
+        if (attempt < MAX_ATTEMPTS) await wait(attempt * RETRY_DELAY_MS);
+    }
+    throw lastError;
+};
+
 export const predictHarmonic = async (payload) => {
     let lastError;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
