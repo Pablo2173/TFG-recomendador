@@ -18,7 +18,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from recomendador_armonico import FEATURE_COLUMNS, RecomendadorArmonico, _aumentar
+from recomendador_armonico import (
+    FEATURE_COLUMNS,
+    RecomendadorArmonico,
+    _aumentar,
+    _similitud_artista,
+    _variantes_artista,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -147,6 +153,21 @@ class RecomendadorMetamorphicTests(unittest.TestCase):
         duplicated = RecomendadorArmonico.rank_tracks(tracks_path, 0, 1, limit=10)
 
         self.assertEqual(original, duplicated)
+
+    def test_artista_colaboracion_coincide_con_cualquiera_de_sus_interpretes(self) -> None:
+        """Una colaboración no pierde la coincidencia por comparar el texto completo."""
+        self.assertEqual(
+            _variantes_artista("Ernest Tubb;The Wilburn Brothers"),
+            [
+                "Ernest Tubb;The Wilburn Brothers",
+                "Ernest Tubb",
+                "The Wilburn Brothers",
+            ],
+        )
+        self.assertGreaterEqual(
+            _similitud_artista("Ernest Tubb", "Ernest Tubb;The Wilburn Brothers"),
+            0.99,
+        )
 
 
 if __name__ == "__main__":

@@ -52,6 +52,22 @@ def _similitud(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, _normalizar(a), _normalizar(b)).ratio()
 
 
+def _variantes_artista(artista: str) -> list[str]:
+    """Incluye el artista completo y cada intérprete de una colaboración."""
+    return [
+        artista,
+        *(
+            parte.strip()
+            for parte in re.split(r"\s*(?:;|&|\bfeat(?:uring)?\b)\s*", artista, flags=re.I)
+            if parte.strip()
+        ),
+    ]
+
+
+def _similitud_artista(candidato: str, solicitado: str) -> float:
+    return max(_similitud(candidato, variante) for variante in _variantes_artista(solicitado))
+
+
 def _buscar_deezer(nombre: str, artista: str) -> list[dict[str, Any]]:
     response = requests.get(
         "https://api.deezer.com/search",
@@ -101,9 +117,9 @@ def buscar_preview(nombre: str, artista: str, umbral: float = 0.6) -> dict[str, 
         candidato = max(
             candidatos,
             key=lambda item: _similitud(item["title"], nombre)
-            * _similitud(item["artist"], artista),
+            * _similitud_artista(item["artist"], artista),
         )
-        score = _similitud(candidato["title"], nombre) * _similitud(
+        score = _similitud(candidato["title"], nombre) * _similitud_artista(
             candidato["artist"], artista
         )
         if score >= umbral:

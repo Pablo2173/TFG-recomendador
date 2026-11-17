@@ -10,6 +10,14 @@ const normalize = (value) => value
     .replace(/[^a-z0-9 ]/g, '')
     .trim();
 
+const artistVariants = (value) => [
+    value,
+    ...value
+        .split(/\s*(?:;|&|\bfeat(?:uring)?\b)\s*/i)
+        .map((artist) => artist.trim())
+        .filter(Boolean),
+];
+
 const similarity = (a, b) => {
     const left = normalize(a);
     const right = normalize(b);
@@ -21,6 +29,10 @@ const similarity = (a, b) => {
     const intersection = [...leftWords].filter((word) => rightWords.has(word)).length;
     return intersection / Math.max(leftWords.size, rightWords.size);
 };
+
+const artistSimilarity = (candidate, requested) => Math.max(
+    ...artistVariants(requested).map((artist) => similarity(candidate, artist)),
+);
 
 const searchDeezer = async (name, artist) => {
     const query = new URLSearchParams({ q: `${artist} ${name}`, limit: '5' });
@@ -63,7 +75,7 @@ const searchItunes = async (name, artist) => {
 const bestCandidate = (candidates, name, artist) => candidates
     .map((candidate) => ({
         ...candidate,
-        score: similarity(candidate.title, name) * similarity(candidate.artist, artist),
+        score: similarity(candidate.title, name) * artistSimilarity(candidate.artist, artist),
     }))
     .sort((left, right) => right.score - left.score)[0];
 
