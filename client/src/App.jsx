@@ -25,6 +25,32 @@ const request = async (url, options = {}) => {
   return data
 }
 
+const HARMONIC_AWAKE_TTL_MS = 10 * 60 * 1000
+const HARMONIC_WAKE_DEADLINE_MS = 3 * 60 * 1000
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+let harmonicAwakeUntil = 0
+let harmonicWakePromise = null
+
+const ensureHarmonicAwake = (force = false) => {
+  if (!force && Date.now() < harmonicAwakeUntil) return Promise.resolve()
+  if (harmonicWakePromise) return harmonicWakePromise
+  harmonicWakePromise = (async () => {
+    const deadline = Date.now() + HARMONIC_WAKE_DEADLINE_MS
+    for (; ;) {
+      try {
+        await request('/api/harmonic/health', { signal: AbortSignal.timeout(60000) })
+        harmonicAwakeUntil = Date.now() + HARMONIC_AWAKE_TTL_MS
+        return
+      } catch (wakeError) {
+        if (Date.now() >= deadline) throw wakeError
+        await sleep(3000)
+      }
+    }
+  })().finally(() => { harmonicWakePromise = null })
+  return harmonicWakePromise
+}
+
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
   const [user, setUser] = useState(null)
@@ -68,6 +94,14 @@ function App() {
       setUser(null)
     })
   }, [token])
+
+  useEffect(() => {
+    ensureHarmonicAwake().catch(() => { })
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') ensureHarmonicAwake(true).catch(() => { })
+    }, 8 * 60 * 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const authenticate = async (endpoint, form) => {
     setLoading(true)
@@ -197,10 +231,9 @@ function App() {
     setHarmonicProgress({ phase: 'Comprobando el recomendador...', elapsedSeconds: 0 })
     setError('')
     try {
-      let wakeTimer
       let healthResolved = false
-      const healthRequest = request('/api/harmonic/health')
-      wakeTimer = setTimeout(() => {
+      const healthRequest = ensureHarmonicAwake()
+      const wakeTimer = setTimeout(() => {
         if (!healthResolved) {
           setHarmonicProgress((current) => current
             ? { ...current, phase: 'Despertando el recomendador...' }
@@ -221,16 +254,25 @@ function App() {
           ? { ...current, phase: 'Buscando compatibilidades armónicas...' }
           : current)
       }, 800)
-      const data = await request('/api/recommendations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: selectedTrack.name,
-          artist: selectedTrack.artists,
-          trackId: selectedTrack.trackId,
-          limit,
-        }),
-      })
+      let data
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          data = await request('/api/recommendations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: selectedTrack.name,
+              artist: selectedTrack.artists,
+              trackId: selectedTrack.trackId,
+              limit,
+            }),
+          })
+          break
+        } catch (requestError) {
+          if (attempt >= 2) throw requestError
+          await ensureHarmonicAwake(true)
+        }
+      }
       setHarmonicRecommendations(data.recommendations)
       setHarmonicLimit(limit)
       setHarmonicProgress({

@@ -4,6 +4,12 @@ const RETRY_DELAY_MS = Number(process.env.HARMONIC_RETRY_DELAY_MS ?? 5000);
 const MAX_ATTEMPTS = Number(process.env.HARMONIC_MAX_ATTEMPTS ?? 3);
 const KEEPALIVE_INTERVAL_MS = Number(process.env.HARMONIC_KEEPALIVE_MS ?? 300000);
 
+const AWAKE_TLL_MS = 10 * 60 * 1000;
+let lastOkAt = 0;
+let warming = null;
+
+export const isHarmonicAwake = () => Date.now() - lastOkAt < AWAKE_TLL_MS;
+
 const wait = (milliseconds) => new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
 });
@@ -27,7 +33,15 @@ export const wakeHarmonicApi = async () => {
     const { response } = await requestJson('/health');
     if (!response.ok) {
         throw new Error(`La API tonal respondió HTTP ${response.status} en /health`);
+    } else {
+        lastOkAt = Date.now();
     }
+};
+
+export const startWarmup = () => {
+    if (isHarmonicAwake() || warming) return;
+    warming = wakeHarmonicApiWithRetry()
+        .catch((e) => console.error('warmup falló:', e).finally(() => { warming = null; }));
 };
 
 export const wakeHarmonicApiWithRetry = async () => {
@@ -48,8 +62,7 @@ export const predictHarmonic = async (payload) => {
     let lastError;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
         try {
-            // The health request is intentional: it wakes providers that suspend idle services.
-            await wakeHarmonicApi();
+            if (!isHarmonicAwake()) await wakeHarmonicApi();
             const result = await requestJson('/predict', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

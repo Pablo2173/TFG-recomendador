@@ -76,6 +76,7 @@ def main() -> None:
     parser.add_argument("--model", default="modelo_tono.joblib")
     args = parser.parse_args()
     recommender = RecomendadorArmonico(args.model)
+    recommender._model()
     server = ThreadingHTTPServer((args.host, args.port), create_handler(recommender))
     print(f"API Python en http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
