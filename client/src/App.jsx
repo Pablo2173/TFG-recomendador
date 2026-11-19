@@ -1,15 +1,34 @@
+/*
+  Hooks de react
+  -> useState: guarda datos que redibujan la pantalla
+  -> use Effect -> ejecuta código en comentos concretos
+  -> useRef -> guarda un valor que no redibuja al cambiar
+*/
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
+//token de inicio de sesión y url base de la API
 const TOKEN_KEY = 'tfg_token'
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+const HARMONIC_URL = (import.meta.env.VITE_HARMONIC_URL || '').replace(/\/$/, '')
 
+/*
+  Si no es un número válido devuelve "Duración no disponible"
+  Si es un número válido devuelve el tiempo en formato mm:ss
+*/
 const formatDuration = (durationMs) => {
   if (!Number.isFinite(durationMs)) return 'Duración no disponible'
   const seconds = Math.floor(durationMs / 1000)
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+/*
+  Función para hacer peticiones a la API
+  -> url: ruta de la API (ej: /api/users/me)
+  -> options: opciones de fetch (método, cabeceras, cuerpo, etc.)
+  -> devuelve un objeto con los datos de la respuesta
+  -> si la respuesta no es válida o hay un error lanza una excepción
+*/
 const request = async (url, options = {}) => {
   const response = await fetch(`${API_BASE_URL}${url}`, options)
   const text = await response.text()
@@ -25,6 +44,14 @@ const request = async (url, options = {}) => {
   return data
 }
 
+/*
+  BLOQUE DESPERTAR RECOMENDADOR ARMÓNICO
+  -> El recomendador armónico puede estar suspendido por inactividad
+  -> Se despierta con una petición a /api/harmonic/health
+  -> Se mantiene despierto durante 10 minutos después de la última petición exitosa
+  -> Se intenta despertar hasta 3 veces con un retraso creciente si falla
+*/
+
 const HARMONIC_AWAKE_TTL_MS = 10 * 60 * 1000
 const HARMONIC_WAKE_DEADLINE_MS = 3 * 60 * 1000
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -39,6 +66,11 @@ const ensureHarmonicAwake = (force = false) => {
     const deadline = Date.now() + HARMONIC_WAKE_DEADLINE_MS
     for (; ;) {
       try {
+        if (HARMONIC_URL) {
+          const res = await fetch(`${HARMONIC_URL}/health`, { signal: AbortSignal.timeout(60000) })
+          if (!res.ok) throw new Error(`Python HTTP ${res.status}`)
+          await res.json() // si Render devuelve su página HTML, lanza y se reintenta
+        }
         await request('/api/harmonic/health', { signal: AbortSignal.timeout(60000) })
         harmonicAwakeUntil = Date.now() + HARMONIC_AWAKE_TTL_MS
         return
@@ -51,6 +83,20 @@ const ensureHarmonicAwake = (force = false) => {
   return harmonicWakePromise
 }
 
+/*
+  CEREBRO DE LA APLICACIÓN
+  -> token: token de inicio de sesión
+  -> user: datos del usuario logueado
+  -> recommendations: recomendaciones globales del usuario
+  -> favorites: lista de canciones favoritas del usuario
+  -> view: qué pantalla se muestra (home, favorites, login, register)
+  -> selectedTrack: canción seleccionada para ver detalles
+  -> harmonicRecommendations: recomendaciones armónicas de la canción seleccionada
+  -> harmonicLimit: límite de recomendaciones armónicas a mostrar
+  -> selectedRecommender: recomendador seleccionado (traditional, harmonic)
+  -> recommenderLoading: si el recomendador está cargando
+  -> harmonicProgress: progreso del recomendador armónico
+*/
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
   const [user, setUser] = useState(null)
@@ -72,6 +118,16 @@ function App() {
   const [previewLoadingId, setPreviewLoadingId] = useState(null)
   const [previewProgress, setPreviewProgress] = useState(0)
 
+
+  /*
+    SESIÓN
+    -> authHeaders: devuelve las cabeceras de autorización con el token
+    -> loadSession: carga los datos del usuario, recomendaciones y favoritos
+    -> useEffect: carga la sesión al iniciar la aplicación si hay token (mantiene la sesión iniciada al recargar la página)
+    -> useEffect: mantiene despierto el recomendador armónico cada 8 minutos si la pestaña está visible
+    -> authenticate: inicia sesión o registra un usuario y guarda el token en localStorage
+    -> logout: cierra sesión y borra el token de localStorage
+  */
   const authHeaders = (accessToken = token) => ({ Authorization: `Bearer ${accessToken}` })
 
   const loadSession = async (accessToken) => {
@@ -132,6 +188,13 @@ function App() {
     setView('home')
   }
 
+  /*
+    PREVIEW DE AUDIO
+    -> stopPreview: detiene la reproducción de la preview y resetea el estado
+    -> togglePreview: reproduce o detiene la preview de una canción
+    -> useEffect: detiene la preview al desmontar el componente
+  */
+
   const stopPreview = () => {
     if (audioRef.current) {
       audioRef.current.pause()
@@ -177,6 +240,12 @@ function App() {
 
   useEffect(() => () => stopPreview(), [])
 
+  /*
+    FAVORITOS Y DETALLES DE CANCIONES
+    -> toggleFavorite: añade o elimina una canción de favoritos
+    -> openTrack: abre los detalles de una canción
+  */
+
   const toggleFavorite = async (track) => {
     setError('')
     try {
@@ -217,6 +286,23 @@ function App() {
     }
   }
 
+
+  /*
+    RECOMENDADOR ARMÓNICO
+    1-> Si no hay canción seleccionada, sale
+    2-> Crea startedAt y setInterval para actualizar los segundos transcurridos
+    3-> Activa recommenderloading y setHarmonicProgress con fase "Comprobando el recomendador..."
+    4-> Lanza ensureHarmonicAwake() con un timeout de 1,5 segundos para cambiar la fase a "Despertando el recomendador..." si tarda demasiado
+    5-> Cambia a "Analizando la canción..." y lanza un setTimeout de 0,8 segundos para cambiar a "Buscando compatibilidades armónicas..." si tarda demasiado
+
+    (Estas fases son decorativas para dar feedback al usuario mientras el recomendador armónico está despierto y procesando la canción)
+
+    6-> Lanza un bucle de intentos para hacer la petición a /api/recommendations con el nombre, artista y trackId de la canción seleccionada y el límite de recomendaciones, si el segundo falla, relanza el error
+    7-> Si la petición es exitosa, guarda las recomendaciones, el límite y cambia la fase a "Terminado" con los segundos transcurridos
+    8-> El catch muestra el error, en el finally para los temporizadores y apaga recommenderLoading
+
+    useEffect limpia los temporizadores al desmontar el componente
+  */
   const runHarmonicRecommender = async (limit = 5) => {
     if (!selectedTrack) return
     const startedAt = Date.now()
@@ -302,8 +388,17 @@ function App() {
     if (harmonicPhaseTimerRef.current) clearTimeout(harmonicPhaseTimerRef.current)
   }, [])
 
+  // Función para comprobar si una canción está en favoritos
   const isFavorite = (trackId) => favorites.some((favorite) => favorite.trackId === trackId)
 
+
+  /*
+    JSX
+
+    Barra de navegación con botones para cambiar de vista, mostrar el nombre del usuario y cerrar sesión
+    <main> muestra una sola vista según view y user
+    Modal: solo se dibuja con canción abierta, al cambiar el desplegable limpia el estado y si es 'harmonic' llama a runHarmonicRecommender()
+  */
   return (
     <div className="app-shell">
       <nav className="navbar">
@@ -395,6 +490,19 @@ function App() {
     </div>
   )
 }
+
+
+/*
+  COMPONENTES AUXILIARES
+
+  TrackList: muestra una lista de canciones con botones de preview y favoritos
+             recibe un título, una lista y funciones, si la lista está vacía no muestra nada, cada tarjeta abre la canción al hacer clic.
+
+  AuthForm: tiene su estado form para que la misma pantalla sirva para registro y para login, recibe un modo, un estado de carga, un error y funciones para enviar el formulario y cambiar de modo
+  TrackDetails: muestra los detalles de una canción, un desplegable para cambiar de recomendador y un botón para mostrar más recomendaciones armónicas
+  HarmonicProgress: muestra el progreso del recomendador armónico con una barra de progreso y un texto con la fase actual y los segundos transcurridos
+  PreviewButton: muestra un botón de play/stop con una barra de progreso para la preview de audio
+*/
 
 function TrackList({
   title,
