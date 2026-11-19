@@ -2,11 +2,9 @@ const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000';
 const REQUEST_TIMEOUT_MS = Number(process.env.HARMONIC_REQUEST_TIMEOUT_MS ?? 120000);
 const RETRY_DELAY_MS = Number(process.env.HARMONIC_RETRY_DELAY_MS ?? 5000);
 const MAX_ATTEMPTS = Number(process.env.HARMONIC_MAX_ATTEMPTS ?? 3);
-const KEEPALIVE_INTERVAL_MS = Number(process.env.HARMONIC_KEEPALIVE_MS ?? 300000);
 
 const AWAKE_TLL_MS = 10 * 60 * 1000;
 let lastOkAt = 0;
-let warming = null;
 
 export const isHarmonicAwake = () => Date.now() - lastOkAt < AWAKE_TLL_MS;
 
@@ -38,11 +36,6 @@ export const wakeHarmonicApi = async () => {
     }
 };
 
-export const startWarmup = () => {
-    if (isHarmonicAwake() || warming) return;
-    warming = wakeHarmonicApiWithRetry()
-        .catch((e) => console.error('warmup falló:', e).finally(() => { warming = null; }));
-};
 
 export const wakeHarmonicApiWithRetry = async () => {
     let lastError;
@@ -78,25 +71,4 @@ export const predictHarmonic = async (payload) => {
         if (attempt < MAX_ATTEMPTS) await wait(attempt * RETRY_DELAY_MS);
     }
     throw lastError;
-};
-
-let keepAliveInFlight = null;
-
-const keepHarmonicApiAwake = async () => {
-    if (keepAliveInFlight) return keepAliveInFlight;
-    keepAliveInFlight = wakeHarmonicApi()
-        .catch((error) => {
-            console.error('No se pudo mantener despierta la API tonal:', error);
-        })
-        .finally(() => {
-            keepAliveInFlight = null;
-        });
-    return keepAliveInFlight;
-};
-
-export const startHarmonicKeepAlive = () => {
-    if (!Number.isFinite(KEEPALIVE_INTERVAL_MS) || KEEPALIVE_INTERVAL_MS <= 0) return;
-    const timer = setInterval(keepHarmonicApiAwake, KEEPALIVE_INTERVAL_MS);
-    timer.unref?.();
-    void keepHarmonicApiAwake();
 };

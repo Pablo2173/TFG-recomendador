@@ -7,7 +7,6 @@ import usersRouter from './routes/users.js';
 import { findPreview } from './services/previewService.js';
 import {
     predictHarmonic,
-    startHarmonicKeepAlive,
     wakeHarmonicApi,
     wakeHarmonicApiWithRetry,
 } from './services/harmonicApi.js';
@@ -119,7 +118,7 @@ app.post('/api/recommendations', async (req, res) => {
                 ((sameKey ? 0.45 : 0) +
                     (sameMode ? 0.25 : 0) +
                     (harmonicRelation ? 0.30 : 0)) *
-                    10000,
+                10000,
             ) / 100;
             return {
                 trackId: track.trackId,
@@ -157,7 +156,6 @@ if (!process.env.MONGO_URI) {
 }
 
 const server = app.listen(PORT, () => {
-    startHarmonicKeepAlive();
     console.log(`API en http://localhost:${PORT}`);
 });
 
